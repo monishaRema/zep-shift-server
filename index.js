@@ -23,9 +23,10 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // await client.connect();
-    const db = client.db("parcelDB"); // database name
-    const parcelCollection = db.collection("parcels"); // collection
+    const db = client.db("parcelDB");
+    const parcelCollection = db.collection("parcels");
     const paymentsCollection = db.collection("payments");
+    const trackingCollection = db.collection("tracking");
 
     app.get("/parcels", async (req, res) => {
       const parcels = await parcelCollection.find().toArray();
@@ -93,6 +94,29 @@ async function run() {
         console.error("Error deleting parcel:", error);
         res.status(500).send({ message: "Failed to delete parcel" });
       }
+    });
+
+    // POST tracking API
+    app.post("/tracking", async (req, res) => {
+      const {
+        tracking_id,
+        parcel_id,
+        status,
+        message,
+        updated_by = "",
+      } = req.body;
+
+      const log = {
+        tracking_id,
+        parcel_id: parcel_id ? new ObjectId(parcel_id) : undefined,
+        status,
+        message,
+        time: new Date(),
+        updated_by,
+      };
+
+      const result = await trackingCollection.insertOne(log);
+      res.send({ success: true, insertedId: result.insertedId });
     });
 
     app.post("/create-payment-intent", async (req, res) => {
