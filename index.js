@@ -53,7 +53,6 @@ async function run() {
     });
 
     // GET: Single parcel depending on ID
-
     app.get("/parcels/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -81,6 +80,7 @@ async function run() {
       }
     });
 
+    
     app.delete("/parcels/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -119,6 +119,23 @@ async function run() {
       res.send({ success: true, insertedId: result.insertedId });
     });
 
+    // GET tracking API
+
+    app.get("/tracking", async (req, res) => {
+      const { tracking_id, parcel_id } = req.query;
+      let query = {};
+      if (tracking_id) query.tracking_id = tracking_id;
+      if (parcel_id) query.parcel_id = new ObjectId(parcel_id);
+
+      const logs = await trackingCollection
+        .find(query)
+        .sort({ time: 1 })
+        .toArray();
+      res.send(logs);
+    });
+
+
+    // POST : Payment intent api
     app.post("/create-payment-intent", async (req, res) => {
       const amountInCents = req.body.amountInCents;
       try {
@@ -133,6 +150,7 @@ async function run() {
         res.status(500).json({ error: error.message });
       }
     });
+
 
     // POST: Crete payment API
     app.post("/payments", async (req, res) => {
@@ -159,6 +177,8 @@ async function run() {
         res.status(500).send({ message: "Failed to save payment" });
       }
     });
+
+
     // GET: all payment history API for admin
     app.get("/payments", async (req, res) => {
       try {
@@ -172,6 +192,8 @@ async function run() {
         res.status(500).send({ message: "Failed to get payment history" });
       }
     });
+
+
     // GET paymnet history for User depending on Email API.
     app.get("/payments", async (req, res) => {
       try {
