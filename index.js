@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { initializeApp } = require("firebase-admin/app");
+const admin = require("firebase-admin");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,17 +22,81 @@ const client = new MongoClient(uri, {
   },
 });
 
+const serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 async function run() {
   try {
     // await client.connect();
     const db = client.db("parcelDB");
-    const parcelCollection = db.collection("parcels");
-    const paymentsCollection = db.collection("payments");
-    const trackingCollection = db.collection("tracking");
+    const parcelCollection = db.collection("parcels"); //all parcels data Collection
+    const paymentsCollection = db.collection("payments"); //all payments data Collection
+    const trackingCollection = db.collection("tracking"); // all package tracking data Collection
+    const userCollection = db.collection("users"); // all users data Collection
 
     app.get("/parcels", async (req, res) => {
       const parcels = await parcelCollection.find().toArray();
       res.send(parcels);
+    });
+
+    // Firebase accesToken verification
+    const verifyFBToken = async (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res
+          .status(401)
+          .send({ message: "Unauthorized: No auth header" });
+      }
+
+      const token = authHeader.split(" ")[1];
+      if (!token) {
+        return res.status(401).send({ message: "Unauthorized: No token" });
+      }
+
+      try {
+        const decodedUser = await admin.auth().verifyIdToken(token);
+        req.user = decodedUser; // Attach to request for downstream use
+        next();
+      } catch (error) {
+        console.error("Token verification failed:", error);
+        return res.status(403).send({ message: "Forbidden: Invalid token" });
+      }
+    };
+
+    // POST: create user api and check existing user
+    app.post("/users", async (req, res) => {
+      const email = req.body.email;
+      const newUser = req.body;
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      try {
+        const existingUser = await userCollection.findOne({ email });
+        if (existingUser) {
+          //Update user last loggedIn
+          const result = await userCollection.updateOne(
+            { email },
+            { $set: { last_loggedIn: newUser.last_loggedIn } },
+            { upsert: true }
+          );
+
+          return res.status(200).send({
+            message: "User already exists",
+            insertedId: false,
+            user: existingUser,
+          });
+        }
+
+        const result = await userCollection.insertOne(newUser);
+        res.send(result);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error", insertedId: false });
+      }
     });
 
     // parcels api
@@ -80,7 +146,7 @@ async function run() {
       }
     });
 
-    
+    // DELETE: delete parcels api
     app.delete("/parcels/:id", async (req, res) => {
       try {
         const id = req.params.id;
@@ -134,7 +200,6 @@ async function run() {
       res.send(logs);
     });
 
-
     // POST : Payment intent api
     app.post("/create-payment-intent", async (req, res) => {
       const amountInCents = req.body.amountInCents;
@@ -151,9 +216,8 @@ async function run() {
       }
     });
 
-
-    // POST: Crete payment API
-    app.post("/payments", async (req, res) => {
+    // POST: Create payment API
+    app.post("/payments", verifyFBToken, async (req, res) => {
       try {
         const paymentData = req.body;
         paymentData.createdAt = new Date();
@@ -178,9 +242,10 @@ async function run() {
       }
     });
 
-
     // GET: all payment history API for admin
-    app.get("/payments", async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
+
+
       try {
         const payments = await paymentsCollection
           .find()
@@ -193,11 +258,14 @@ async function run() {
       }
     });
 
-
     // GET paymnet history for User depending on Email API.
-    app.get("/payments", async (req, res) => {
+    app.get("/payments",verifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
+        // Check User email with varified email
+        if(req.user.email !== userEmail){
+          return res.status(403).send({message: "Forbidden Access"})
+        }
         const query = userEmail ? { email: userEmail } : {};
         const payments = await paymentsCollection
           .find(query)
