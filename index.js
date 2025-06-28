@@ -36,6 +36,7 @@ async function run() {
     const paymentsCollection = db.collection("payments"); //all payments data Collection
     const trackingCollection = db.collection("tracking"); // all package tracking data Collection
     const userCollection = db.collection("users"); // all users data Collection
+    const ridersCollection = db.collection("riders"); // all riders data Collection
 
     app.get("/parcels", async (req, res) => {
       const parcels = await parcelCollection.find().toArray();
@@ -66,6 +67,81 @@ async function run() {
       }
     };
 
+    // POST: create new rider and check existing rider
+    app.post("/rider", verifyFBToken, async (req, res) => {
+      try {
+        const {
+          name,
+          age,
+          email,
+          region,
+          district,
+          nid,
+          contact,
+          bike_registration,
+          warehouse,
+        } = req.body;
+
+        // Validate required fields
+        if (
+          !name ||
+          !age ||
+          !email ||
+          !region ||
+          !district ||
+          !nid ||
+          !contact ||
+          !bike_registration ||
+          !warehouse
+        ) {
+          return res.status(400).json({ message: "All fields are required." });
+        }
+
+        // Ensure the email in token matches the email sent in body (for security)
+        if (req.user.email !== email) {
+          return res
+            .status(401)
+            .json({ message: "Token email does not match request email." });
+        }
+
+        // Prevent duplicate registration (by email or NID)
+        const existingRider = await ridersCollection.findOne({
+          $or: [{ email }, { nid }],
+        });
+
+        if (existingRider) {
+          return res
+            .status(409)
+            .json({ message: "Rider already exists with this email or NID." });
+        }
+
+        // Prepare rider object (always set status/pending and created_at here)
+        const newRider = {
+          name,
+          age: Number(age),
+          email,
+          region,
+          district,
+          nid,
+          contact,
+          bike_registration,
+          warehouse,
+          status: "pending",
+          created_at: new Date().toISOString(),
+        };
+
+        const result = await ridersCollection.insertOne(newRider);
+
+        if (result.insertedId) {
+          res.status(201).json({ insertedId: result.insertedId });
+        } else {
+          throw new Error("Insert failed");
+        }
+      } catch (err) {
+        console.error("Rider POST error:", err);
+        res.status(500).json({ message: "Server error. Please try again." });
+      }
+    });
     // POST: create user api and check existing user
     app.post("/users", async (req, res) => {
       const email = req.body.email;
@@ -244,8 +320,6 @@ async function run() {
 
     // GET: all payment history API for admin
     app.get("/payments", verifyFBToken, async (req, res) => {
-
-
       try {
         const payments = await paymentsCollection
           .find()
@@ -259,12 +333,12 @@ async function run() {
     });
 
     // GET paymnet history for User depending on Email API.
-    app.get("/payments",verifyFBToken, async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const userEmail = req.query.email;
         // Check User email with varified email
-        if(req.user.email !== userEmail){
-          return res.status(403).send({message: "Forbidden Access"})
+        if (req.user.email !== userEmail) {
+          return res.status(403).send({ message: "Forbidden Access" });
         }
         const query = userEmail ? { email: userEmail } : {};
         const payments = await paymentsCollection
