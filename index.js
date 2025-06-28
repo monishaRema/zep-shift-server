@@ -2,8 +2,7 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const { initializeApp } = require("firebase-admin/app");
-const admin = require("firebase-admin");
+const { verifyFBToken } = require("./middlewares/verifyFBToken");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -22,12 +21,6 @@ const client = new MongoClient(uri, {
   },
 });
 
-const serviceAccount = require("./firebase-admin-key.json");
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
 async function run() {
   try {
     // await client.connect();
@@ -42,30 +35,6 @@ async function run() {
       const parcels = await parcelCollection.find().toArray();
       res.send(parcels);
     });
-
-    // Firebase accesToken verification
-    const verifyFBToken = async (req, res, next) => {
-      const authHeader = req.headers.authorization;
-      if (!authHeader) {
-        return res
-          .status(401)
-          .send({ message: "Unauthorized: No auth header" });
-      }
-
-      const token = authHeader.split(" ")[1];
-      if (!token) {
-        return res.status(401).send({ message: "Unauthorized: No token" });
-      }
-
-      try {
-        const decodedUser = await admin.auth().verifyIdToken(token);
-        req.user = decodedUser; // Attach to request for downstream use
-        next();
-      } catch (error) {
-        console.error("Token verification failed:", error);
-        return res.status(403).send({ message: "Forbidden: Invalid token" });
-      }
-    };
 
     // POST: create new rider and check existing rider
     app.post("/rider", verifyFBToken, async (req, res) => {
@@ -105,15 +74,15 @@ async function run() {
         }
 
         // Prevent duplicate registration (by email or NID)
-        const existingRider = await ridersCollection.findOne({
-          $or: [{ email }, { nid }],
-        });
+        // const existingRider = await ridersCollection.findOne({
+        //   $or: [{ email }, { nid }],
+        // });
 
-        if (existingRider) {
-          return res
-            .status(409)
-            .json({ message: "Rider already exists with this email or NID." });
-        }
+        // if (existingRider) {
+        //   return res
+        //     .status(409)
+        //     .json({ message: "Rider already exists with this email or NID." });
+        // }
 
         // Prepare rider object (always set status/pending and created_at here)
         const newRider = {
@@ -142,6 +111,57 @@ async function run() {
         res.status(500).json({ message: "Server error. Please try again." });
       }
     });
+
+    // GET /riders/pending-riders
+    app.get("/riders/pending-riders", async (req, res) => {
+      try {
+        const pendingRiders = await ridersCollection
+          .find({ status: "pending" })
+          .toArray();
+        res.status(200).json(pendingRiders);
+      } catch (error) {
+        console.error("Error fetching pending riders:", error);
+        res.status(500).json({ message: "Server error. Try again later." });
+      }
+    });
+    // GET /riders/active-riders
+    app.get("/riders/active-riders", verifyFBToken, async (req, res) => {
+      try {
+        const activeRiders = await ridersCollection
+          .find({ status: "active" })
+          .toArray();
+        res.json(activeRiders);
+      } catch (err) {
+        console.error("Fetch active riders error:", err);
+        res.status(500).json({ message: "Server error. Please try again." });
+      }
+    });
+
+    // PATCH /riders/:id
+    app.patch("/riders/:id", verifyFBToken, async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        // You can add allowed status validation here if you want
+
+        const result = await ridersCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status } }
+        );
+
+        // result: { acknowledged, matchedCount, modifiedCount, ... }
+        res.json({
+          message: "Update attempted.",
+          matchedCount: result.matchedCount,
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (err) {
+        console.error("Update rider status error:", err);
+        res.status(500).json({ message: "Server error. Please try again." });
+      }
+    });
+
     // POST: create user api and check existing user
     app.post("/users", async (req, res) => {
       const email = req.body.email;
