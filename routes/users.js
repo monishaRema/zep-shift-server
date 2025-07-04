@@ -1,11 +1,13 @@
 const express = require("express");
 const { ObjectId } = require("mongodb");
 const { verifyFBToken } = require("../middlewares/verifyFBToken");
+const verifyAdmin = require("../middlewares/verifyAdmin");
 
 module.exports = ({ userCollection }) => {
   const router = express.Router();
+  const checkAdmin = verifyAdmin(userCollection);
 
-  // POST: Create or update user
+  // POST: Create or update user (public route or protected via token)
   router.post("/", async (req, res) => {
     const email = req.body.email;
     const newUser = req.body;
@@ -37,13 +39,15 @@ module.exports = ({ userCollection }) => {
     }
   });
 
-  // GET : user depending on search
-  router.get("/search", verifyFBToken, async (req, res) => {
+  // 🔐 GET: Search user (admin only)
+  router.get("/search", verifyFBToken, checkAdmin, async (req, res) => {
     const emailQuery = req.query.email;
 
     if (!emailQuery)
       return res.status(400).json({ message: "Email query required" });
+
     const safeQuery = emailQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     try {
       const users = await userCollection
         .find({ email: { $regex: safeQuery, $options: "i" } })
@@ -57,8 +61,8 @@ module.exports = ({ userCollection }) => {
     }
   });
 
-  // UPDATE : update user role
-  router.patch("/:id/role", verifyFBToken, async (req, res) => {
+  // 🔐 PATCH: Update user role (admin only)
+  router.patch("/:id/role", verifyFBToken, checkAdmin, async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
@@ -82,8 +86,7 @@ module.exports = ({ userCollection }) => {
     }
   });
 
-  
-  // GET: Get user role by Firebase-authenticated email
+  // ✅ GET: Authenticated user's role (for frontend check)
   router.get("/role", verifyFBToken, async (req, res) => {
     try {
       const email = req.user.email;
