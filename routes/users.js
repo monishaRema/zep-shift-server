@@ -5,7 +5,7 @@ const { verifyFBToken } = require("../middlewares/verifyFBToken");
 module.exports = ({ userCollection }) => {
   const router = express.Router();
 
-  // Create or update user
+  // POST: Create or update user
   router.post("/", async (req, res) => {
     const email = req.body.email;
     const newUser = req.body;
@@ -38,49 +38,71 @@ module.exports = ({ userCollection }) => {
   });
 
   // GET : user depending on search
-router.get("/search",verifyFBToken, async (req, res) => {
-  const emailQuery = req.query.email;
+  router.get("/search", verifyFBToken, async (req, res) => {
+    const emailQuery = req.query.email;
 
-  if (!emailQuery) return res.status(400).json({ message: "Email query required" });
-  const safeQuery = emailQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  try {
-    const users = await userCollection
-      .find({ email: { $regex: safeQuery, $options: "i" } })
-      .limit(10)
-      .toArray();
+    if (!emailQuery)
+      return res.status(400).json({ message: "Email query required" });
+    const safeQuery = emailQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      const users = await userCollection
+        .find({ email: { $regex: safeQuery, $options: "i" } })
+        .limit(10)
+        .toArray();
 
-    res.json(users);
-  } catch (error) {
-    console.error("Search error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+      res.json(users);
+    } catch (error) {
+      console.error("Search error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
 
-router.patch("/:id/role", verifyFBToken, async (req, res) => {
-  const { id } = req.params;
-  const { role } = req.body;
+  // UPDATE : update user role
+  router.patch("/:id/role", verifyFBToken, async (req, res) => {
+    const { id } = req.params;
+    const { role } = req.body;
 
-  if (!["admin", "user"].includes(role)) {
-    return res.status(400).json({ message: "Invalid role" });
-  }
+    if (!["admin", "user"].includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
 
-  try {
-    const result = await userCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { role } }
-    );
+    try {
+      const result = await userCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { role } }
+      );
 
-    res.json({
-      message: `User role updated to ${role}`,
-      modifiedCount: result.modifiedCount,
-    });
-  } catch (error) {
-    console.error("Role update error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+      res.json({
+        message: `User role updated to ${role}`,
+        modifiedCount: result.modifiedCount,
+      });
+    } catch (error) {
+      console.error("Role update error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
 
+  
+  // GET: Get user role by Firebase-authenticated email
+  router.get("/role", verifyFBToken, async (req, res) => {
+    try {
+      const email = req.user.email;
 
+      const user = await userCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({
+        email: user.email,
+        role: user.role || "user",
+      });
+    } catch (error) {
+      console.error("Get user role error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
 
   return router;
 };
