@@ -53,6 +53,12 @@ module.exports = ({ ridersCollection, userCollection }) => {
     }
   });
 
+    // GET: all riders
+  router.get("/", async (req, res) => {
+    const riders = await ridersCollection.find().toArray();
+    res.json(riders);
+  });
+
   // GET: pending riders
   router.get("/pending-riders", async (req, res) => {
     const riders = await ridersCollection.find({ status: "pending" }).toArray();
@@ -62,6 +68,16 @@ module.exports = ({ ridersCollection, userCollection }) => {
   // GET: active riders
   router.get("/active-riders", verifyFBToken, async (req, res) => {
     const riders = await ridersCollection.find({ status: "active" }).toArray();
+    res.json(riders);
+  });
+  // GET: deactive riders
+  router.get("/deactivated-riders", verifyFBToken, async (req, res) => {
+    const riders = await ridersCollection.find({ status: "deactivated" }).toArray();
+    res.json(riders);
+  });
+    // GET: Rejected riders
+  router.get("/rejected-riders", verifyFBToken, async (req, res) => {
+    const riders = await ridersCollection.find({ status: "rejected" }).toArray();
     res.json(riders);
   });
 
