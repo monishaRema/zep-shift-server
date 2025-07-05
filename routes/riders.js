@@ -21,8 +21,15 @@ module.exports = ({ ridersCollection, userCollection }) => {
       } = req.body;
 
       if (
-        !name || !age || !email || !region || !district ||
-        !nid || !contact || !bike_registration || !warehouse
+        !name ||
+        !age ||
+        !email ||
+        !region ||
+        !district ||
+        !nid ||
+        !contact ||
+        !bike_registration ||
+        !warehouse
       ) {
         return res.status(400).json({ message: "All fields are required." });
       }
@@ -53,7 +60,7 @@ module.exports = ({ ridersCollection, userCollection }) => {
     }
   });
 
-    // GET: all riders
+  // GET: all riders
   router.get("/", async (req, res) => {
     const riders = await ridersCollection.find().toArray();
     res.json(riders);
@@ -72,12 +79,16 @@ module.exports = ({ ridersCollection, userCollection }) => {
   });
   // GET: deactive riders
   router.get("/deactivated-riders", verifyFBToken, async (req, res) => {
-    const riders = await ridersCollection.find({ status: "deactivated" }).toArray();
+    const riders = await ridersCollection
+      .find({ status: "deactivated" })
+      .toArray();
     res.json(riders);
   });
-    // GET: Rejected riders
+  // GET: Rejected riders
   router.get("/rejected-riders", verifyFBToken, async (req, res) => {
-    const riders = await ridersCollection.find({ status: "rejected" }).toArray();
+    const riders = await ridersCollection
+      .find({ status: "rejected" })
+      .toArray();
     res.json(riders);
   });
 
@@ -92,16 +103,33 @@ module.exports = ({ ridersCollection, userCollection }) => {
     );
 
     if (status === "active" && result.modifiedCount) {
-      await userCollection.updateOne(
-        { email },
-        { $set: { role: "rider" } }
-      );
+      await userCollection.updateOne({ email }, { $set: { role: "rider" } });
     }
 
     res.json({
       message: "Status updated",
       modifiedCount: result.modifiedCount,
     });
+  });
+
+  // GET: Available riders based on region
+  router.get("/available", async (req, res) => {
+    const { region } = req.query;
+
+    if (!region) {
+      return res.status(400).json({ message: "Region is required" });
+    }
+
+    try {
+      const riders = await ridersCollection
+        .find({ status: "active", region })
+        .toArray();
+
+      res.json(riders);
+    } catch (err) {
+      console.error("Fetch available riders by region failed:", err);
+      res.status(500).json({ message: "Server error" });
+    }
   });
 
   return router;
